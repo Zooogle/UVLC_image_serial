@@ -71,7 +71,7 @@ def recv_check(recv_data):
         print('Receive check wrong!')
 
 
-class Receiver:
+class RS_Receiver:
     def __init__(self, port,
                  baudrate,
                  timeout,
@@ -116,6 +116,7 @@ class Receiver:
             return bytes(data_array)
 
     def recv_main(self):
+        recv_time_start = time.time()
         self.recv_byte = self.catch_use_serial()
 
         if self.recv_byte is not None:
@@ -127,7 +128,8 @@ class Receiver:
             bitarray_factory.frombytes(rs_decoded)
 
             # if bitarray_factory is not None:
-            self.i_spiht = self._123(bitarray_factory)
+            # test = int(ceil(len(bitarray_factory) / 5))
+            self.i_spiht = self._123(bitarray_factory[bitarray_factory])
             try:
                 SPIHT_time_start = time.time()
                 self.i_dwt[0] = spiht_decode(self.i_spiht[0], self.eng)
@@ -140,6 +142,8 @@ class Receiver:
                 self.show_recv_img()
 
                 self.recv_done_flag = True
+                recv_time_end = time.time()
+                print('recv time total cost:', recv_time_end - recv_time_start)
                 self.send_ack()
 
             except:
@@ -189,7 +193,7 @@ class Receiver:
 
 
 if __name__ == "__main__":
-    receiver = Receiver('COM7', baudrate=921600, timeout=1)
+    receiver = RS_Receiver('COM7', baudrate=921600, timeout=1)
     os.mkdir(receiver.test_dir)
     while True:
         receiver.recv_main()
