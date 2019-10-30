@@ -84,7 +84,7 @@ MODE = 'periodization'
 LEVEL = 3
 
 
-class Sender:
+class RS_Sender:
     def __init__(self, port,
                  baudrate,
                  timeout,
@@ -195,7 +195,7 @@ class Sender:
 
         return m_bytes, each_chunk_bit_size * 3
 
-    def send_use_serial(self):
+    def send_rs_use_serial(self):
         send_times = 1
         while True:
             time.sleep(3)
@@ -230,5 +230,5 @@ class Sender:
 
 if __name__ == "__main__":
     print("starting")
-    sender = Sender('COM6', baudrate=921600, timeout=1)
-    sender.send_use_serial()
+    sender = RS_Sender('COM6', baudrate=921600, timeout=1)
+    sender.send_rs_use_serial()
