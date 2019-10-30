@@ -164,12 +164,12 @@ class Receiver:
         recv_id = 0
         while recv_id < 10:
             recv_bytes = self.catch_a_drop_use_serial()
-            recv_id += 1
-            print('recv id:', recv_id)
 
             if recv_bytes is not None:
+                recv_id += 1
+                print('recv id:', recv_id)
                 results = recv_check(recv_bytes)
-                if results is not None:
+                if not results == None:
                     success_times += 1
                     print('success rate:{}/{}'.format(success_times, recv_id))
 
