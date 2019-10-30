@@ -16,6 +16,9 @@ from dwt_lib import load_img
 from fountain_lib import Fountain, Glass
 from fountain_lib import EW_Fountain, EW_Droplet
 from spiht_dwt_lib import spiht_encode, func_DWT, code_to_file, spiht_decode, func_IDWT, file_to_code
+from SPIHT_serial_send import RS_Sender
+from SPIHT_serial_recv import RS_Receiver
+
 
 LIB_PATH = os.path.dirname(__file__)
 DOC_PATH = os.path.join(LIB_PATH, '../doc')
@@ -39,7 +42,7 @@ def send_check(send_bytes):
     zero = bytes(0)
 
     frame_start = b'ok'
-    frame_end = b'fuck'
+    frame_end = b'fine'
 
     odd_flag = False
     if not len(data_array) % 2 == 0:
@@ -112,6 +115,10 @@ class Sender:
         self.w1_pro = w1_pro
         # self.port = port
         self.seed = seed
+        self.recvdone_ack = False
+        self.detect_ack = False
+        self.rs_send = False
+        self.lt_send = False
 
         # if self.port.is_open:
         #     print("串口{}打开成功".format(self.port.portstr))
@@ -290,6 +297,33 @@ class Sender:
         #     f.write(str(a))
         return a
 
+    def send_detect_sequence(self):
+        print('Start sending detect sequence......')
+        detect_sequence = b'this_is_a_detect_sequence'
+        send_times = 1
+        while True:
+            time.sleep(1)
+            self.port.write(send_check(detect_sequence))
+            self.port.flushOutput()
+            print('detect sequence send times:', send_times)
+            send_times += 1
+            self.ack_detect()
+            if self.detect_ack:
+                break
+
+    def ack_detect(self):
+        time.sleep(1)
+        size1 = self.port.in_waiting
+        if size1 == 2:
+            data_rec = self.port.read_all()
+            data_array = bytearray(data_rec)
+            if data_array[:] == b'ok':
+                self.detect_ack = True
+                self.rs_send = True
+            elif data_array[:] == b'no':
+                self.detect_ack = True
+                self.lt_send = True
+
     def send_drops_use_serial(self):
         #     send_data = a_drop.encode('utf-8')
         #     self.port.write(send_data)
@@ -309,6 +343,18 @@ class Sender:
                 print("send_drops_len:{}".format(len(self.a_drop())))
                 self.port.write(send_check(self.a_drop()))
                 self.port.flushOutput()
+            self.recvdone_ack_detect()
+            if self.recvdone_ack:
+                break
+
+    def recvdone_ack_detect(self):
+        time.sleep(1)
+        size1 = self.port.in_waiting
+        if size1 == 4:
+            data_rec = self.port.read_all()
+            data_array = bytearray(data_rec)
+            if data_array[:] == b'recv':
+                self.recvdone_ack = True
 
 
 
@@ -490,5 +536,16 @@ class EW_Receiver(Receiver):
 if __name__ == "__main__":
     print("starting")
     # sender = Sender('COM6', baudrate=921600, timeout=1)
+    # sender = RS_Sender('COM6', baudrate=921600, timeout=1)
+    # sender.send_rs_use_serial()
     sender = EW_Sender('COM6', baudrate=921600, timeout=1)
-    sender.send_drops_use_serial()
+    sender.send_detect_sequence()
+    if sender.rs_send:
+        sender = RS_Sender('COM6', baudrate=921600, timeout=1)
+        sender.send_rs_use_serial()
+
+    elif sender.lt_send:
+        sender.send_drops_use_serial()
+
+
+
