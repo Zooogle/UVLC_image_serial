@@ -19,6 +19,9 @@ from dwt_lib import load_img
 from fountain_lib import Fountain, Glass
 from fountain_lib import EW_Fountain, EW_Droplet
 from spiht_dwt_lib import spiht_encode, func_DWT, code_to_file, spiht_decode, func_IDWT
+from SPIHT_serial_send import RS_Sender
+from SPIHT_serial_recv import RS_Receiver
+
 
 LIB_PATH = os.path.dirname(__file__)
 DOC_PATH = os.path.join(LIB_PATH, '../doc')
@@ -69,152 +72,6 @@ def recv_check(recv_data):
     else:
         print('Receive check wrong!')
 
-class Sender:
-    def __init__(self, port,
-                 baudrate,
-                 timeout,
-                 img_path=LENA_IMG,
-                 level=3,
-                 wavelet='bior4.4',
-                 mode='periodization',
-
-                 fountain_chunk_size=7500,
-                 fountain_type='normal',
-                 drop_interval=5,
-
-                 w1_size=0.1,
-                 w1_pro=0.084,
-                 seed=None):
-
-        self.port = serial.Serial(port, baudrate)
-        self.drop_id = 0
-        self.eng = matlab.engine.start_matlab()
-        self.eng.addpath(LIB_PATH)
-        self.img_path = img_path
-        self.fountain_chunk_size = fountain_chunk_size
-        self.fountain_type = fountain_type
-        self.drop_interval = drop_interval
-        self.w1_p = w1_size
-        self.w1_pro = w1_pro
-        # self.port = port
-        self.seed = seed
-
-        # if self.port.is_open:
-        #     print("串口{}打开成功".format(self.port.portstr))
-        # else:
-        #     print("串口打开失败")
-
-        temp_file = self.img_path  # .replace(self.img_path.split('/')[-1], 'tmp')
-        rgb_list = ['r', 'g', 'b']
-        temp_file_list = [temp_file + '_' + ii for ii in rgb_list]
-        if self.is_need_img_process():
-            print('processing image: {:s}'.format(self.img_path))
-            img = load_img(self.img_path)
-            (width, height) = img.size
-            mat_r = np.empty((width, height))
-            mat_g = np.empty((width, height))
-            mat_b = np.empty((width, height))
-            for i in range(width):
-                for j in range(height):
-                    [r, g, b] = img.getpixel((i, j))
-                    mat_r[i, j] = r
-                    mat_g[i, j] = g
-                    mat_b[i, j] = b
-            self.img_mat = [mat_r, mat_g, mat_b]
-            self.dwt_coeff = [func_DWT(ii) for ii in self.img_mat]                         # r,g,b小波变换得到系数
-            self.spiht_bits = [spiht_encode(ii, self.eng) for ii in self.dwt_coeff]        # r,g,b的spiht编码
-
-            a = [code_to_file(self.spiht_bits[ii],
-                              temp_file_list[ii],
-                              add_to=self.fountain_chunk_size / 3 * 8)
-                 for ii in range(len(rgb_list))]
-        else:
-            print('temp file found : {:s}'.format(self.img_path))
-
-        self.m, _chunk_size = self.compose_rgb(temp_file_list, each_chunk_size=int(self.fountain_chunk_size / 3))
-
-        self.fountain = self.fountain_builder()
-
-        #  a = [os.remove(ii) for ii in temp_file_list]
-        self.show_info()
-        # self.a_drop()
-
-
-    def is_need_img_process(self):                       # 判断有没有rgb文件
-        #  print(sys._getframe().f_code.co_name)
-
-        doc_list = os.listdir(os.path.dirname(self.img_path))
-        img_name = self.img_path.split('/')[-1]
-        suffix = ['_' + ii for ii in list('rbg')]
-        target = [img_name + ii for ii in suffix]
-        count = 0
-        for t in target:
-            if t in doc_list:
-                count += 1
-        if count == 3:
-            return False
-        else:
-            return True
-
-
-    def compose_rgb(self, file_list, each_chunk_size=2500):
-        '''
-        将三个文件和并为一个文件
-        '''
-
-        m_list = []
-        m_list.append(open(file_list[0], encoding='gb18030', errors='ignore').read())
-        m_list.append(open(file_list[1], encoding='gb18030', errors='ignore').read())
-        m_list.append(open(file_list[2], encoding='gb18030', errors='ignore').read())
-
-        #  a = [print(len(ii)) for ii in m_list]
-        m = ''
-        for i in range(int(ceil(len(m_list[0]) / float(each_chunk_size)))):
-            start = i * each_chunk_size
-            end = min((i + 1) * each_chunk_size, len(m_list[0]))
-            #  m += ''.join([ii[start:end] for ii in m_list])
-            m += m_list[0][start: end]
-            m += m_list[1][start: end]
-            m += m_list[2][start: end]
-        print('compose_rgb len(m):', len(m))                                       # r,g,b(size)+...+
-        return m, each_chunk_size * 3
-
-    def fountain_builder(self):
-        if self.fountain_type == 'normal':
-            return Fountain(self.m, chunk_size=self.fountain_chunk_size, seed=self.seed)
-        elif self.fountain_type == 'ew':
-            return EW_Fountain(self.m,
-                               chunk_size=self.fountain_chunk_size,
-                               w1_size=self.w1_p,
-                               w1_pro=self.w1_pro,
-                               seed=self.seed)
-
-    def show_info(self):
-        self.fountain.show_info()
-
-    def a_drop(self):
-        return self.fountain.droplet().toBytes()
-
-    def send_drops_use_serial(self):
-        #     send_data = a_drop.encode('utf-8')
-        #     self.port.write(send_data)
-        packet_discard_rate = 0.1
-        discard_one = int(1 / packet_discard_rate)
-        while True:
-            time.sleep(self.drop_interval)
-            self.drop_id += 1
-            if self.drop_id % discard_one == 0:
-                print("Discard one")
-                self.a_drop()
-            else:
-                print('drop id : ', self.drop_id)
-                self.port.write(self.a_drop())                         # write 须为str
-
-
-class EW_Sender(Sender):
-    def __init__(self, img_path, fountain_chunk_size, seed=None):
-        Sender.__init__(self, img_path, fountain_chunk_size=fountain_chunk_size, fountain_type='ew', seed=seed)
-
 
 class Receiver:
     def __init__(self, port,
@@ -246,6 +103,9 @@ class Receiver:
         self.drop_byte_size = 99999
         self.test_dir = os.path.join(TEST_PATH, time.asctime().replace(' ', '_').replace(':', '_'))
         self.w1_done = True
+        self.recv_done_flag = False
+        self.wlt_ds = 0
+        self.detect_done = False
 
         # os.mkdir(self.test_dir)
 
@@ -258,6 +118,7 @@ class Receiver:
         #         break
 
     def begin_to_catch(self):
+
         a_drop_bytes = self.catch_a_drop_use_serial()          # bytes
 
         if a_drop_bytes is not None:
@@ -280,7 +141,7 @@ class Receiver:
         if size1:
             self.data_rec = self.port.read_all()
             frame_len = len(self.data_rec)
-            if self.data_rec[0:2] == b'ok' and self.data_rec[frame_len - 4:frame_len] == b'fuck':
+            if self.data_rec[0:2] == b'ok' and self.data_rec[frame_len - 4:frame_len] == b'fine':
                 data_array = bytearray(self.data_rec)
                 data_array.pop(0)
                 data_array.pop(0)
@@ -298,7 +159,39 @@ class Receiver:
             self.port.flushInput()
 
 
+    def detect_exam(self):
+        success_times = 0
+        recv_id = 0
+        while recv_id < 10:
+            recv_bytes = self.catch_a_drop_use_serial()
+            recv_id += 1
+            print('recv id:', recv_id)
+
+            if recv_bytes is not None:
+                results = recv_check(recv_bytes)
+                if results is not None:
+                    success_times += 1
+                    print('success rate:{}/{}'.format(success_times, recv_id))
+
+        success_rate = float(success_times / 10)
+        if success_rate > 0.5:
+            self.detect_done = True
+
+        self.send_detect_ack()
+
+    def send_detect_ack(self):
+        ack_good = b'ok'
+        ack_bad = b'no'
+        if self.detect_done:
+            self.port.write(ack_good)
+            self.port.flushOutput()
+        else:
+            self.port.write(ack_bad)
+            self.port.flushOutput()
+        print('send detect ack done')
+
     def add_a_drop(self, d_byte):
+        recv_time_start = time.time()
         drop = self.glass.droplet_from_Bytes(d_byte)           # drop
 
         print('drop data len: ', len(drop.data))
@@ -308,12 +201,16 @@ class Receiver:
             self.glass = Glass(drop.num_chunks)                 # 初始化接收glass
             self.chunk_size = len(drop.data)
 
+        lt_decode_start = time.time()
         self.glass.addDroplet(drop)                             # glass add drops
 
         logging.info('current chunks')
         logging.info([ii if ii == None else '++++' for ii in self.glass.chunks])
 
         if self.glass.isDone():
+            lt_decode_end = time.time()
+            print('LT decode time:', lt_decode_end - lt_decode_start)
+
             self.recv_bit = self.glass.get_bits()                   # bits
 
             # a = self.recv_bit.length()
@@ -322,20 +219,25 @@ class Receiver:
             if (int(self.recv_bit.length()) > 0) and \
                     (self.recv_bit.length() > self.current_recv_bits_len):
                 self.current_recv_bits_len = int(self.recv_bit.length())
-                #  self.recv_bit.tofile(open('./recv_tmp.txt', 'w'))
+
                 self.i_spiht = self._123(self.recv_bit)
-                #  self.i_dwt = [spiht_decode(ii, self.eng) for ii in self.i_spiht]
                 try:
+                    SPIHT_time_start = time.time()
                     self.i_dwt[0] = spiht_decode(self.i_spiht[0], self.eng)
                     self.i_dwt[1] = spiht_decode(self.i_spiht[1], self.eng)
                     self.i_dwt[2] = spiht_decode(self.i_spiht[2], self.eng)
                     self.img_mat = [func_IDWT(ii) for ii in self.i_dwt]
+                    SPIHT_time_end = time.time()
+                    print('SPIHT decode time:', SPIHT_time_end - SPIHT_time_start)
+                    print('recv time total cost:', SPIHT_time_end - recv_time_start)
 
                     #  单通道处理
                     #  self.idwt_coeff_r = spiht_decode(self.recv_bit, self.eng)
                     #  self.r_mat =func_IDWT(self.idwt_coeff_r)
                     self.img_shape = self.img_mat[0].shape
                     self.show_recv_img()
+                    self.recv_done_flag = True
+                    self.send_ack()
                 except:
                     print('Decode error in matlab')
 
@@ -457,6 +359,13 @@ class Receiver:
         # rgb_bits = [r_bits, g_bits, b_bits]
         # return rgb_bits
 
+    def send_recv_done_ack(self):
+        if self.recv_done_flag:
+            ack = b'recv'
+            self.port.write(ack)
+            self.port.flushOutput()
+            print('send recv_done_ack done')
+
 
 class EW_Receiver(Receiver):
     def __init__(self, port, baudrate, timeout, recv_img=None):
@@ -468,9 +377,11 @@ class EW_Receiver(Receiver):
         ew_drop = EW_Droplet(a_drop.data, a_drop.seed, a_drop.num_chunks)
 
         if self.glass.num_chunks == 0:
+            self.wlt_ds = time.time()
             print('init num_chunks : ', a_drop.num_chunks)
             self.glass = Glass(a_drop.num_chunks)
             self.chunk_size = len(a_drop.data)
+
 
         self.glass.addDroplet(ew_drop)
 
@@ -504,6 +415,8 @@ class EW_Receiver(Receiver):
 
         # 解码全部信息
         if self.glass.isDone():                                                       # 喷泉码接收译码完成
+            wlt_de = time.time()
+            print('Window LT decode time used:', wlt_de - self.wlt_ds)
             self.recv_bit = self.glass.get_bits()
             #  print('recv bits length : ', int(self.recv_bit.length()))
             if (int(self.recv_bit.length()) > 0) and \
@@ -511,27 +424,48 @@ class EW_Receiver(Receiver):
                 self.current_recv_bits_len = self.recv_bit.length()
                 self.i_spiht = self._123(self.recv_bit)
                 try:
+                    spihtstart = time.time()
                     self.i_dwt[0] = spiht_decode(self.i_spiht[0], self.eng)
                     self.i_dwt[1] = spiht_decode(self.i_spiht[1], self.eng)
                     self.i_dwt[2] = spiht_decode(self.i_spiht[2], self.eng)
                     self.img_mat = [func_IDWT(ii) for ii in self.i_dwt]
-
+                    spihtend = time.time()
+                    print('SPIHT decode time:', spihtend - spihtstart)
                     #  单通道处理
                     #  self.idwt_coeff_r = spiht_decode(self.recv_bit, self.eng)
                     #  self.r_mat =func_IDWT(self.idwt_coeff_r)
                     self.img_shape = self.img_mat[0].shape
                     self.show_recv_img()
+                    self.recv_done_flag = True
+                    self.send_recv_done_ack()
                 except:
                     print('decode error in matlab')
 
 
 if __name__ == "__main__":
     # receiver = Receiver('COM7', baudrate=921600, timeout=1)
+    # receiver = RS_Receiver('COM7', baudrate=921600, timeout=1)
+
+    # while True:
+    #     receiver.recv_main()
+    #     if receiver.recv_done_flag:
+    #         break
     receiver = EW_Receiver('COM7', baudrate=921600, timeout=1)
     os.mkdir(receiver.test_dir)
-    while True:
-        receiver.begin_to_catch()
-        if receiver.glass.isDone():
-            print('recv done')
-            # receiver.show_recv_img()
-            break
+
+    receiver.detect_exam()
+    if receiver.detect_done:
+        time.sleep(5)
+        while True:
+            receiver = RS_Receiver('COM7', baudrate=921600, timeout=1)
+            receiver.recv_main()
+            if receiver.recv_done_flag:
+                break
+
+    else:
+        time.sleep(5)
+        while True:
+            receiver.begin_to_catch()
+            if receiver.glass.isDone():
+                print('recv done')
+                break
