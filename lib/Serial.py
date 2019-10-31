@@ -16,8 +16,6 @@ from dwt_lib import load_img
 from fountain_lib import Fountain, Glass
 from fountain_lib import EW_Fountain, EW_Droplet
 from spiht_dwt_lib import spiht_encode, func_DWT, code_to_file, spiht_decode, func_IDWT, file_to_code
-from SPIHT_serial_send import RS_Sender
-from SPIHT_serial_recv import RS_Receiver
 from rs_image_lib import rs_encode_image
 
 
