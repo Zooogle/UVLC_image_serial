@@ -118,6 +118,7 @@ class Sender:
         self.detect_ack = False
         self.rs_send = False
         self.lt_send = False
+        self.detect_start_time = 0
 
         # if self.port.is_open:
         #     print("串口{}打开成功".format(self.port.portstr))
@@ -299,6 +300,7 @@ class Sender:
 
     '''发送探测序列部分，根据探测序列接收端反馈决定RS-SPIHT图像直传or喷泉码'''
     def send_detect_sequence(self):
+        detect_start_time = time.time()
         print('Start sending detect sequence......')
         detect_sequence = b'this_is_a_detect_sequence'
         send_times = 1
@@ -309,7 +311,12 @@ class Sender:
             print('detect sequence send times:', send_times)
             send_times += 1
             self.ack_detect()
+            time_now = time.time()
+            time_used = time_now - detect_start_time
             if self.detect_ack:
+                break
+            elif time_used > 60:        # 接收ack超时中断，使用喷泉码
+                self.lt_send = True
                 break
 
     def ack_detect(self):           # 探测序列ack检测

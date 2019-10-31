@@ -123,7 +123,7 @@ class Receiver:
                     print('success rate:{}/{}'.format(success_times, recv_id))
 
         success_rate = float(success_times / 10)
-        if success_rate < 0.5:
+        if success_rate > 0.5:
             self.detect_done = True
 
         self.send_detect_ack()
