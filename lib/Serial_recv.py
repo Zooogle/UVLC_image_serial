@@ -21,6 +21,7 @@ from fountain_lib import EW_Fountain, EW_Droplet
 from spiht_dwt_lib import spiht_encode, func_DWT, code_to_file, spiht_decode, func_IDWT
 from SPIHT_serial_send import RS_Sender
 from SPIHT_serial_recv import RS_Receiver
+from rs_image_lib import rs_decode_image
 
 
 LIB_PATH = os.path.dirname(__file__)
@@ -107,16 +108,40 @@ class Receiver:
         self.wlt_ds = 0
         self.detect_done = False
 
-        # os.mkdir(self.test_dir)
 
+    '探测序列检测部分，检测完成返回ack'
+    def detect_exam(self):
+        success_times = 0
+        recv_id = 0
+        while recv_id < 10:
+            recv_bytes = self.catch_a_drop_use_serial()
 
-        # while True:
-        #     self.begin_to_catch()
-        #     if self.glass.isDone():
-        #
-        #         print('recv done')
-        #         break
+            if recv_bytes is not None:
+                recv_id += 1
+                print('recv id:', recv_id)
+                results = recv_check(recv_bytes)
+                if not results == None:
+                    success_times += 1
+                    print('success rate:{}/{}'.format(success_times, recv_id))
 
+        success_rate = float(success_times / 10)
+        if success_rate > 0.5:
+            self.detect_done = True
+
+        self.send_detect_ack()
+
+    def send_detect_ack(self):
+        ack_good = b'ok'
+        ack_bad = b'no'
+        if self.detect_done:
+            self.port.write(ack_good)
+            self.port.flushOutput()
+        else:
+            self.port.write(ack_bad)
+            self.port.flushOutput()
+        print('send detect ack done')
+
+    '''LT喷泉码接收解码部分'''
     def begin_to_catch(self):
 
         a_drop_bytes = self.catch_a_drop_use_serial()          # bytes
@@ -157,38 +182,6 @@ class Receiver:
                 print('Wrong receive frame !')
         else:
             self.port.flushInput()
-
-
-    def detect_exam(self):
-        success_times = 0
-        recv_id = 0
-        while recv_id < 10:
-            recv_bytes = self.catch_a_drop_use_serial()
-
-            if recv_bytes is not None:
-                recv_id += 1
-                print('recv id:', recv_id)
-                results = recv_check(recv_bytes)
-                if not results == None:
-                    success_times += 1
-                    print('success rate:{}/{}'.format(success_times, recv_id))
-
-        success_rate = float(success_times / 10)
-        if success_rate > 0.5:
-            self.detect_done = True
-
-        self.send_detect_ack()
-
-    def send_detect_ack(self):
-        ack_good = b'ok'
-        ack_bad = b'no'
-        if self.detect_done:
-            self.port.write(ack_good)
-            self.port.flushOutput()
-        else:
-            self.port.write(ack_bad)
-            self.port.flushOutput()
-        print('send detect ack done')
 
     def add_a_drop(self, d_byte):
         recv_time_start = time.time()
@@ -237,7 +230,7 @@ class Receiver:
                     self.img_shape = self.img_mat[0].shape
                     self.show_recv_img()
                     self.recv_done_flag = True
-                    self.send_ack()
+                    self.send_recv_done_ack()
                 except:
                     print('Decode error in matlab')
 
@@ -367,6 +360,57 @@ class Receiver:
             print('send recv_done_ack done')
 
 
+    '''RS接收解码部分'''
+    def catch_rs_use_serial(self):
+        time.sleep(1)
+        size1 = self.port.in_waiting
+        if size1 == 0:
+            # print('\r', 'serial port listening......', end='')
+            print('serial port listening......')
+            self.catch_rs_use_serial()
+        elif size1:
+            self.data_rec = self.port.read_all()
+            data_array = bytearray(self.data_rec)
+            self.port.flushInput()
+
+            return bytes(data_array)
+
+    def rs_recv_main(self):
+        recv_time_start = time.time()
+        self.recv_byte = self.catch_rs_use_serial()
+
+        if self.recv_byte is not None:
+            rs_decode_start = time.time()
+            rs_decoded = rs_decode_image(self.recv_byte)
+            rs_decode_end = time.time()
+            print('RS decode time:', rs_decode_end - rs_decode_start)
+            bitarray_factory = bitarray.bitarray(endian='big')
+            bitarray_factory.frombytes(rs_decoded)
+
+            # if bitarray_factory is not None:
+            # test = int(ceil(len(bitarray_factory) / 5))
+            self.i_spiht = self._123(bitarray_factory)
+            try:
+                SPIHT_time_start = time.time()
+                self.i_dwt[0] = spiht_decode(self.i_spiht[0], self.eng)
+                self.i_dwt[1] = spiht_decode(self.i_spiht[1], self.eng)
+                self.i_dwt[2] = spiht_decode(self.i_spiht[2], self.eng)
+                self.img_mat = [func_IDWT(ii) for ii in self.i_dwt]
+                SPIHT_time_end = time.time()
+                print('SPIHT decode time:', SPIHT_time_end - SPIHT_time_start)
+                self.img_shape = self.img_mat[0].shape
+                self.show_recv_img()
+
+                self.recv_done_flag = True
+                recv_time_end = time.time()
+                print('recv time total cost:', recv_time_end - recv_time_start)
+                self.send_recv_done_ack()
+
+            except:
+                print('Decode error in matlab')
+
+
+'''扩展窗喷泉码部分'''
 class EW_Receiver(Receiver):
     def __init__(self, port, baudrate, timeout, recv_img=None):
         Receiver.__init__(self, port=port, baudrate=baudrate, timeout=timeout)
@@ -457,9 +501,9 @@ if __name__ == "__main__":
     if receiver.detect_done:
         time.sleep(5)
         while True:
-            receiver = RS_Receiver('COM7', baudrate=921600, timeout=1)
-            receiver.recv_main()
+            receiver.rs_recv_main()
             if receiver.recv_done_flag:
+                print('RS-SPIHT receive done!')
                 break
 
     else:
@@ -467,5 +511,5 @@ if __name__ == "__main__":
         while True:
             receiver.begin_to_catch()
             if receiver.glass.isDone():
-                print('recv done')
+                print('LT-SPIHT receive done!')
                 break
