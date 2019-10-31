@@ -18,6 +18,7 @@ from fountain_lib import EW_Fountain, EW_Droplet
 from spiht_dwt_lib import spiht_encode, func_DWT, code_to_file, spiht_decode, func_IDWT, file_to_code
 from SPIHT_serial_send import RS_Sender
 from SPIHT_serial_recv import RS_Receiver
+from rs_image_lib import rs_encode_image
 
 
 LIB_PATH = os.path.dirname(__file__)
@@ -297,6 +298,8 @@ class Sender:
         #     f.write(str(a))
         return a
 
+
+    '''发送探测序列部分，根据探测序列接收端反馈决定RS-SPIHT图像直传or喷泉码'''
     def send_detect_sequence(self):
         print('Start sending detect sequence......')
         detect_sequence = b'this_is_a_detect_sequence'
@@ -311,7 +314,7 @@ class Sender:
             if self.detect_ack:
                 break
 
-    def ack_detect(self):
+    def ack_detect(self):           # 探测序列ack检测
         time.sleep(1)
         size1 = self.port.in_waiting
         if size1 == 2:
@@ -324,6 +327,8 @@ class Sender:
                 self.detect_ack = True
                 self.lt_send = True
 
+
+    '''使用LT喷泉码发送方式'''
     def send_drops_use_serial(self):
         #     send_data = a_drop.encode('utf-8')
         #     self.port.write(send_data)
@@ -347,7 +352,7 @@ class Sender:
             if self.recvdone_ack:
                 break
 
-    def recvdone_ack_detect(self):
+    def recvdone_ack_detect(self):          # '''接收是否完成的ack检测'''
         time.sleep(1)
         size1 = self.port.in_waiting
         if size1 == 4:
@@ -355,6 +360,24 @@ class Sender:
             data_array = bytearray(data_rec)
             if data_array[:] == b'recv':
                 self.recvdone_ack = True
+
+
+    '''RS-SPIHT发送部分'''
+    def send_rs_use_serial(self):
+        send_times = 1
+        while True:
+            time.sleep(3)
+            rs_data = rs_encode_image(self.m, 500)
+            print('RS coded data bytes len:', len(rs_data))
+            self.port.write(rs_data)
+            self.port.flushOutput()
+            print('send times:', send_times)
+            send_times = send_times + 1
+            self.recvdone_ack_detect()
+            if self.recvdone_ack:
+                break
+
+
 
 
 
@@ -541,10 +564,12 @@ if __name__ == "__main__":
     sender = EW_Sender('COM6', baudrate=921600, timeout=1)
     sender.send_detect_sequence()
     if sender.rs_send:
-        sender = RS_Sender('COM6', baudrate=921600, timeout=1)
         sender.send_rs_use_serial()
 
     elif sender.lt_send:
+        sender.send_drops_use_serial()
+
+    else:
         sender.send_drops_use_serial()
 
 
