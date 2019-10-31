@@ -115,7 +115,7 @@ class RS_Receiver:
 
             return bytes(data_array)
 
-    def recv_main(self):
+    def rs_recv_main(self):
         recv_time_start = time.time()
         self.recv_byte = self.catch_use_serial()
 
@@ -129,7 +129,7 @@ class RS_Receiver:
 
             # if bitarray_factory is not None:
             # test = int(ceil(len(bitarray_factory) / 5))
-            self.i_spiht = self._123(bitarray_factory[bitarray_factory])
+            self.i_spiht = self._123(bitarray_factory)
             try:
                 SPIHT_time_start = time.time()
                 self.i_dwt[0] = spiht_decode(self.i_spiht[0], self.eng)
@@ -196,7 +196,7 @@ if __name__ == "__main__":
     receiver = RS_Receiver('COM7', baudrate=921600, timeout=1)
     os.mkdir(receiver.test_dir)
     while True:
-        receiver.recv_main()
+        receiver.rs_recv_main()
         if receiver.recv_done_flag:
             break
 
