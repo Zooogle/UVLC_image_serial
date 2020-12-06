@@ -38,7 +38,7 @@ LEVEL = 3
 def bitarray2str(bit):
     return bit.tobytes().decode('utf-8')
 
-
+# 接收校验
 def recv_check(recv_data):
     data_array = bytearray(recv_data)
     sum = int(0)

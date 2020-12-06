@@ -34,7 +34,7 @@ RECV_PATH = os.path.join(DOC_PATH, 'recvbytes.txt')
 def bitarray2str(bit):
     return bit.tobytes()
 
-
+# 添加校验和、帧头
 def send_check(send_bytes):
     data_array = bytearray(send_bytes)
     sum = int(0)
@@ -94,7 +94,7 @@ class Sender:
                  wavelet='bior4.4',
                  mode='periodization',
 
-                 fountain_chunk_size=3000,          # 应能被数据长度30000整除
+                 fountain_chunk_size=200,          # 应能被数据长度30000整除
                  fountain_type='normal',
                  drop_interval=1,
 
@@ -102,7 +102,7 @@ class Sender:
                  w1_pro=0.084,
                  seed=None):
 
-        self.port = serial.Serial(port, baudrate)
+        # self.port = serial.Serial(port, baudrate)
         self.drop_id = 0
         self.eng = matlab.engine.start_matlab()
         self.eng.addpath(LIB_PATH)
@@ -563,19 +563,19 @@ class EW_Receiver(Receiver):
 
 if __name__ == "__main__":
     print("starting")
-    # sender = Sender('COM6', baudrate=921600, timeout=1)
+    sender = Sender('COM6', baudrate=921600, timeout=1)
     # sender = RS_Sender('COM6', baudrate=921600, timeout=1)
     # sender.send_rs_use_serial()
-    sender = EW_Sender('COM6', baudrate=921600, timeout=1)
-    sender.send_detect_sequence()
-    if sender.rs_send:
-        sender.send_rs_use_serial()
+    # sender = EW_Sender('COM6', baudrate=921600, timeout=1)
+    # sender.send_detect_sequence()
+    # if sender.rs_send:
+    #     sender.send_rs_use_serial()
 
-    elif sender.lt_send:
-        sender.send_drops_use_serial()
+    # elif sender.lt_send:
+    #     sender.send_drops_use_serial()
 
-    else:
-        sender.send_drops_use_serial()
+    # else:
+    #     sender.send_drops_use_serial()
 
 
 
